@@ -1,15 +1,41 @@
 #include <iostream>
+#include <string>
 #include <nn/network.hpp>
 #include <nn/opencl/factory.hpp>
+#include <nn/software/connection.hpp>
 
 int main(int argc, char *argv[])
 {
 	nn::Network net;
-	nn::cl::Factory factory("libnn/opencl/kernel.c");
 	
-	nn::cl::Layer *in = factory.createLayer(1,4);
-	nn::cl::Layer *out = factory.createLayer(2,4);
-	nn::cl::Connection *conn = factory.createConnection(1,4,4);
+	const nn::Layer::ID in_id = 1, out_id = 2;
+	const nn::Connection::ID conn_id = 1;
+	const int in_size = 4, out_size = 4;
+	
+	nn::Layer *in;
+	nn::Layer *out;
+	nn::Connection *conn;
+	
+	bool opencl = false;
+	if(argc > 1 && std::string(argv[1]) == std::string("opencl"))
+	{
+		opencl = true;
+	}
+	
+	nn::cl::Factory *factory = nullptr;
+	if(opencl)
+	{
+		factory = new nn::cl::Factory("libnn/opencl/kernel.c");
+		in = factory->createLayer(in_id, in_size);
+		out = factory->createLayer(out_id, out_size);
+		conn = factory->createConnection(conn_id, in_size, out_size);
+	}
+	else
+	{
+		in = new nn::sw::Layer(in_id, in_size);
+		out = new nn::sw::Layer(out_id, out_size);
+		conn = new nn::sw::Connection(conn_id, in_size, out_size);
+	}
 	
 	net.addLayer(in);
 	net.addLayer(out);
@@ -33,6 +59,20 @@ int main(int argc, char *argv[])
 	for(int i = 0; i < 4; ++i)
 		std::cout << out_data[i] << ' ';
 	std::cout << std::endl;
+	
+	net.forConnections([](nn::Connection *conn) 
+	{
+		delete conn;
+	});
+	net.forLayers([](nn::Layer *layer)
+	{
+		delete layer;
+	});
+
+	if(opencl)
+	{
+		delete factory;
+	}
 	
 	return 0;
 }
