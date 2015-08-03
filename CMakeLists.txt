@@ -8,9 +8,16 @@ set(SOURCES
 	source/main.cpp
 )
 
-include_directories(libnn/include)
-include_directories(libnn/libcl4u)
+add_executable(reco ${SOURCES})
 
 add_subdirectory(libnn)
-add_executable(reco ${SOURCES})
-target_link_libraries(${PROJECT_NAME} OpenCL libnn)
+include_directories(libnn/include)
+
+find_package(OpenCL)
+if(OPENCL_FOUND)
+	add_definitions(-DNN_OPENCL)
+	include_directories(libnn/libcl4u)
+	target_link_libraries (${PROJECT_NAME} ${OPENCL_LIBRARIES})
+endif(OPENCL_FOUND)
+
+target_link_libraries(${PROJECT_NAME} libnn)

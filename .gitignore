@@ -1,6 +1,7 @@
 *~
 
 build/
+CMakeFiles
 
 *.creator
 *.files

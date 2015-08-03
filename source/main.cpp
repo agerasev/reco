@@ -1,8 +1,13 @@
 #include <iostream>
 #include <string>
 #include <nn/network.hpp>
-#include <nn/opencl/factory.hpp>
+#include <nn/software/sigmoidlayer.hpp>
 #include <nn/software/connection.hpp>
+#ifdef NN_OPENCL
+#include <nn/opencl/factory.hpp>
+#endif // NN_OPENCL
+#include <nn/learn/bp/network.hpp>
+
 
 int main(int argc, char *argv[])
 {
@@ -16,26 +21,16 @@ int main(int argc, char *argv[])
 	nn::Layer *out;
 	nn::Connection *conn;
 	
-	bool opencl = false;
-	if(argc > 1 && std::string(argv[1]) == std::string("opencl"))
-	{
-		opencl = true;
-	}
-	
-	nn::cl::Factory *factory = nullptr;
-	if(opencl)
-	{
-		factory = new nn::cl::Factory("libnn/opencl/kernel.c");
-		in = factory->createLayer(in_id, in_size);
-		out = factory->createLayer(out_id, out_size);
-		conn = factory->createConnection(conn_id, in_size, out_size);
-	}
-	else
-	{
-		in = new nn::sw::Layer(in_id, in_size);
-		out = new nn::sw::Layer(out_id, out_size);
-		conn = new nn::sw::Connection(conn_id, in_size, out_size);
-	}
+#ifdef NN_OPENCL
+	nn::cl::Factory *factory = new nn::cl::Factory("libnn/opencl/kernel.c");
+	in = factory->createLayer(in_id, in_size);
+	out = factory->createLayer(out_id, out_size);
+	conn = factory->createConnection(conn_id, in_size, out_size);
+#else // NN_OPENCL
+	in = new nn::sw::Layer(in_id, in_size);
+	out = new nn::sw::SigmoidLayer(out_id, out_size);
+	conn = new nn::sw::Connection(conn_id, in_size, out_size);
+#endif // NN_OPENCL
 	
 	net.addLayer(in);
 	net.addLayer(out);
@@ -69,10 +64,9 @@ int main(int argc, char *argv[])
 		delete layer;
 	});
 
-	if(opencl)
-	{
-		delete factory;
-	}
+#ifdef NN_OPENCL
+	delete factory;
+#endif // NN_OPENCL
 	
 	return 0;
 }
