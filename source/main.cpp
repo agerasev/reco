@@ -6,7 +6,6 @@
 #ifdef NN_OPENCL
 #include <nn/opencl/factory.hpp>
 #endif // NN_OPENCL
-#include <nn/learn/bp/network.hpp>
 
 
 int main(int argc, char *argv[])
