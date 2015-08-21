@@ -1,21 +1,13 @@
 #include <iostream>
 #include <string>
+#include <random>
 #include <nn/bp/net.hpp>
 #include <nn/sw/bp/layerext.hpp>
 #include <nn/sw/bp/conn.hpp>
 
-static unsigned seed = 0x378fea63;
-static const unsigned lcaa = 0xa63b12ef;
-static const unsigned lcab = 0x3724fcef;
-
-unsigned random()
-{
-	return seed = lcaa*seed + lcab;
-}
-
 float urandom01()
 {
-	return float(random())/0xffffffff;
+	return float(random())/RAND_MAX;
 }
 
 float urandom11()
@@ -70,18 +62,20 @@ void printConn(const Conn_BP *conn)
 
 int main(int argc, char *argv[])
 {
+	srand(12345);
+	
 	Net_BP net;
 	
 	const Layer::ID in_id = 1, out_id = 2;
 	const Conn::ID conn_id = 1;
-	static const int in_size = 4, out_size = 4;
+	static const int in_size = 2, out_size = 4;
 	
 	Layer_BP *in;
 	Layer_BP *out;
 	Conn_BP *conn;
 	
 	in = new LayerSW_BP(in_id, in_size);
-	out = new LayerExtSW_BP<EXT_SIGMOID>(out_id, out_size);
+	out = new LayerSW_BP(out_id, out_size);
 	conn = new ConnSW_BP(conn_id, in_size, out_size);
 	
 	net.addLayer(in);
@@ -96,22 +90,27 @@ int main(int argc, char *argv[])
 	float bias_data[out_size];
 	for(int i = 0; i < out_size; ++i)
 	{
-		weight_data[i] = urandom11();
+		bias_data[i] = urandom11();
 	}
 	
 	conn->getWeight().write(weight_data);
 	conn->getBias().write(bias_data);
 	
-	for(int j = 0; j < 100; ++j)
+	for(int j = 0; j < 10000; ++j)
 	{
+		int num = random() % 4;
 		float in_data[in_size];
 		float out_data[out_size];
-		static_assert(in_size == out_size, "in_size != out_size");
+		float result[out_size];
 		for(int i = 0; i < in_size; ++i)
 		{
-			in_data[i] = urandom11();
-			out_data[out_size - i - 1] = in_data[i];
+			in_data[i] = (num >> i) & 1;
 		}
+		for(int i = 0; i < out_size; ++i)
+		{
+			result[i] = i == num ? 1.0f : 0.0f;
+		}
+		std::cout << num << std::endl;
 		
 		in->getInput().write(in_data);
 		
@@ -121,13 +120,12 @@ int main(int argc, char *argv[])
 			net.stepForward();
 		}
 		
-		out->getOutput().read(in_data);
-		static_assert(in_size == out_size, "in_size != out_size");
+		out->getOutput().read(out_data);
 		for(int i = 0; i < in_size; ++i)
 		{
-			out_data[i] -= in_data[i];
+			result[i] -= out_data[i];
 		}
-		out->getInputError().write(out_data);
+		out->getInputError().write(result);
 		out->getInputError().validate(true);
 		
 		for(int i = 0; i < 2; ++i)
@@ -137,9 +135,12 @@ int main(int argc, char *argv[])
 			net.stepBackward();
 		}
 		
-		printConn(conn);
-		std::cout << std::endl;
-		net.commitGrad(1e-2);
+		if(j % 10 == 0)
+		{
+			printStep(j, in, out);
+			printConn(conn);
+			net.commitGrad(1e-2);
+		}
 	}
 	
 	net.forConns([](Conn *conn) 
