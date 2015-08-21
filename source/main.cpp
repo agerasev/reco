@@ -1,19 +1,10 @@
 #include <iostream>
 #include <string>
-#include <random>
 #include <nn/bp/net.hpp>
 #include <nn/sw/bp/layerext.hpp>
 #include <nn/sw/bp/conn.hpp>
 
-float urandom01()
-{
-	return float(random())/RAND_MAX;
-}
-
-float urandom11()
-{
-	return 2.0f*urandom01() - 1.0f;
-}
+#include "reader.hpp"
 
 std::ostream &operator << (std::ostream &os, const Layer::Buffer &buffer)
 {
@@ -27,16 +18,13 @@ std::ostream &operator << (std::ostream &os, const Layer::Buffer &buffer)
 	return os;
 }
 
-void printStep(int i, const Layer_BP *in, const Layer_BP *out)
+void printLayer_BP(const Layer_BP *layer)
 {
-	std::cout << "step " << i << ':' << std::endl;
-	std::cout << in->getInput() << '\t' << in->getOutputError() << std::endl;
-	std::cout << in->getOutput() << '\t' << in->getInputError() << std::endl;
-	std::cout << out->getInput() << '\t' << out->getOutputError() << std::endl;
-	std::cout << out->getOutput() << '\t' << out->getInputError() << std::endl;
+	std::cout << layer->getInput() << '\t' << layer->getOutputError() << std::endl;
+	std::cout << layer->getOutput() << '\t' << layer->getInputError() << std::endl;
 }
 
-void printConn(const Conn_BP *conn)
+void printConn_BP(const Conn_BP *conn)
 {
 	int sx = conn->getInputSize(), sy = conn->getOutputSize();
 	float *data = new float[2*(sx + 1)*sy];
@@ -60,88 +48,140 @@ void printConn(const Conn_BP *conn)
 	delete[] data;
 }
 
+#define PRINT_COST
+//#define PRINT_FORWARD
+//#define PRINT_BACKWARD
+
 int main(int argc, char *argv[])
 {
-	srand(12345);
+	static const int LAYER_COUNT = 3;
+	const int LAYER_SIZE[LAYER_COUNT] = {28*28, 30, 10};
+	
+	srand(32526);
 	
 	Net_BP net;
 	
-	const Layer::ID in_id = 1, out_id = 2;
-	const Conn::ID conn_id = 1;
-	static const int in_size = 2, out_size = 4;
-	
 	Layer_BP *in;
 	Layer_BP *out;
-	Conn_BP *conn;
 	
-	in = new LayerSW_BP(in_id, in_size);
-	out = new LayerSW_BP(out_id, out_size);
-	conn = new ConnSW_BP(conn_id, in_size, out_size);
-	
-	net.addLayer(in);
-	net.addLayer(out);
-	net.addConn(conn, in->getID(), out->getID());
-	
-	float weight_data[in_size*out_size];
-	for(int i = 0; i < in_size*out_size; ++i)
+	for(int i = 0; i < LAYER_COUNT; ++i)
 	{
-		weight_data[i] = urandom11();
+		Layer_BP *layer = new LayerExtSW_BP<EXT_SIGMOID>(i, LAYER_SIZE[i]);
+		if(i == 0)
+			in = layer;
+		else if(i == LAYER_COUNT - 1)
+			out = layer;
+		net.addLayer(layer);
 	}
-	float bias_data[out_size];
-	for(int i = 0; i < out_size; ++i)
+	for(int i = 0; i < LAYER_COUNT - 1; ++i)
 	{
-		bias_data[i] = urandom11();
+		Conn_BP *conn = new ConnSW_BP(i, LAYER_SIZE[i], LAYER_SIZE[i + 1]);
+		conn->getWeight().randomize();
+		conn->getBias().randomize();
+		net.addConn(conn, i, i + 1);
 	}
 	
-	conn->getWeight().write(weight_data);
-	conn->getBias().write(bias_data);
+	ImageSet *train_set = createImageSet("mnist/train-labels.idx1-ubyte", "mnist/train-images.idx3-ubyte");
+	ImageSet *test_set = createImageSet("mnist/t10k-labels.idx1-ubyte", "mnist/t10k-images.idx3-ubyte");
 	
-	for(int j = 0; j < 10000; ++j)
+	if(train_set->size_x != 28 || train_set->size_y != 28)
 	{
-		int num = random() % 4;
-		float in_data[in_size];
+		std::cerr << "train set image size is not 28x28" << std::endl;
+		return 1;
+	}
+	if(test_set->size_x != 28 || test_set->size_y != 28)
+	{
+		std::cerr << "test set image size is not 28x28" << std::endl;
+		return 1;
+	}
+	
+	const int epoch_length = train_set->size;
+	const int batch_size = 10;
+	
+#ifdef PRINT_COST
+	const int cost_count = 10;
+	float cost = 0.0;
+#endif // PRINT_COST
+	for(int j = 0; j < epoch_length; ++j)
+	{
+		// const int in_size = LAYER_SIZE[0];
+		const int out_size = LAYER_SIZE[LAYER_COUNT - 1];
+		
+		float *in_data = train_set->images[j]->data;
 		float out_data[out_size];
 		float result[out_size];
-		for(int i = 0; i < in_size; ++i)
-		{
-			in_data[i] = (num >> i) & 1;
-		}
 		for(int i = 0; i < out_size; ++i)
 		{
-			result[i] = i == num ? 1.0f : 0.0f;
+			result[i] = i == train_set->images[j]->digit ? 1.0f : 0.0f;
 		}
-		std::cout << num << std::endl;
 		
 		in->getInput().write(in_data);
 		
-		for(int i = 0; i < 3; ++i)
+		for(int i = 0; i < LAYER_COUNT + 1; ++i)
 		{
-			//printStep(i, in, out);
-			net.stepForward();
+			if(i != 0)
+				net.stepForward();
+#ifdef PRINT_FORWARD
+			net.forLayers([](Layer *l)
+			{
+				Layer_BP *lb = dynamic_cast<Layer_BP *>(l);
+				if(lb != nullptr)
+					printLayer_BP(lb);
+			});
+			std::cout << std::endl;
+#endif // PRINT_FORWARD
 		}
 		
+		
 		out->getOutput().read(out_data);
-		for(int i = 0; i < in_size; ++i)
+		for(int i = 0; i < out_size; ++i)
 		{
 			result[i] -= out_data[i];
 		}
 		out->getInputError().write(result);
 		out->getInputError().validate(true);
 		
-		for(int i = 0; i < 2; ++i)
+#ifdef PRINT_COST
+		cost += out->getCost();
+#endif // PRINT_COST
+		
+		for(int i = 0; i < LAYER_COUNT; ++i)
 		{
-			//printStep(i, in, out);
-			//printConn(conn);
-			net.stepBackward();
+			if(i != 0)
+				net.stepBackward();
+#ifdef PRINT_BACKWARD
+			net.forLayers([](Layer *l)
+			{
+				Layer_BP *lb = dynamic_cast<Layer_BP *>(l);
+				if(lb != nullptr)
+					printLayer_BP(lb);
+			});
+			net.forConns([](Conn *c)
+			{
+				Conn_BP *cb = dynamic_cast<Conn_BP *>(c);
+				if(cb != nullptr)
+					printConn_BP(cb);
+			});
+			std::cout << std::endl;
+#endif // PRINT_BACKWARD
 		}
 		
-		if(j % 10 == 0)
+		if((j + 1) % batch_size == 0)
 		{
-			printStep(j, in, out);
-			printConn(conn);
-			net.commitGrad(1e-2);
+			net.commitGrad(1.0);
 		}
+		
+#ifdef PRINT_COST
+		if((j + 1) % (epoch_length/cost_count) == 0)
+		{
+			std::cout << "average cost: " << cost/(epoch_length/cost_count) << std::endl;
+			cost = 0.0f;
+		}
+#endif // PRINT_COST
 	}
+	
+	destroyImageSet(train_set);
+	destroyImageSet(test_set);
 	
 	net.forConns([](Conn *conn) 
 	{
