@@ -103,14 +103,14 @@ ImageSet *createImageSet(std::string labels, std::string images)
 		set->images[i] = new Image(cols,rows);
 		
 		ls.get(buf);
-		set->images[i]->digit = static_cast<int>(buf);
+		set->images[i]->digit = buf;
 		
 		for(int iy = 0; iy < rows; ++iy)
 		{
 			for(int ix = 0; ix < cols; ++ix)
 			{
 				is.get(buf);
-				set->images[i]->data[iy*cols + ix] = static_cast<float>(*reinterpret_cast<unsigned char*>(&buf))/255.0;
+				set->images[i]->data[iy*cols + ix] = float(static_cast<unsigned char>(buf))/255.0;
 			}
 		}
 	}
