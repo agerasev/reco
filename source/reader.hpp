@@ -2,13 +2,12 @@
 
 #include <string>
 #include <iostream>
-#include <fstream>
-#include <ios>
+#include <cstdio>
 
-unsigned int readUInt(std::istream &is)
+static unsigned int readUInt(FILE *f)
 {
 	unsigned int var;
-	(((var = is.get()<<24) |= is.get()<<16) |= is.get()<<8) |= is.get();
+	(((var = fgetc(f)<<24) |= fgetc(f)<<16) |= fgetc(f)<<8) |= fgetc(f);
 	return var;
 }
 
@@ -56,14 +55,21 @@ public:
 	}
 };
 
-ImageSet *createImageSet(std::string labels, std::string images)
+ImageSet *createImageSet(const std::string &labels, const std::string &images)
 {
-	std::ifstream ls(labels), is(images);
-	if(!ls.is_open() || !is.is_open())
+	FILE *ls, *is;
+	ls = fopen(labels.data(), "rb");
+	if(!ls)
 	{
-		std::cerr << "files not found" << std::endl;
-		ls.close();
-		is.close();
+		std::cerr << "file " << labels << " not found" << std::endl;
+		return nullptr;
+	}
+	
+	is = fopen(images.data(), "rb");
+	if(!is)
+	{
+		std::cerr << "file " << labels << " not found" << std::endl;
+		fclose(ls);
 		return nullptr;
 	}
 	
@@ -102,21 +108,21 @@ ImageSet *createImageSet(std::string labels, std::string images)
 	{
 		set->images[i] = new Image(cols,rows);
 		
-		ls.get(buf);
+		buf = fgetc(ls);
 		set->images[i]->digit = buf;
 		
 		for(int iy = 0; iy < rows; ++iy)
 		{
 			for(int ix = 0; ix < cols; ++ix)
 			{
-				is.get(buf);
+				buf = fgetc(is);
 				set->images[i]->data[iy*cols + ix] = float(static_cast<unsigned char>(buf))/255.0;
 			}
 		}
 	}
 	
-	ls.close();
-	is.close();
+	fclose(ls);
+	fclose(is);
 	
 	return set;
 }
