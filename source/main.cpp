@@ -60,7 +60,7 @@ int main(int argc, char *argv[])
 	{
 		Layer_BP *layer;
 		if(i != 0)
-			layer = new LayerExtSW_BP<LayerFunc::SIGMOID>(i, LAYER_SIZE[i]);
+			layer = new LayerExtSW_BP<LayerFunc::SIGMOID|LayerCost::CROSS_ENTROPY>(i, LAYER_SIZE[i]);
 		else
 			layer = new LayerSW_BP(i, LAYER_SIZE[i]);
 		

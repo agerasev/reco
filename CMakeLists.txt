@@ -14,9 +14,8 @@ add_subdirectory(libnn)
 include_directories(libnn/include)
 
 if(OPENCL)
-	add_definitions(-DNN_OPENCL)
 	include_directories(libnn/libcl4u/include)
-	target_link_libraries (${PROJECT_NAME} OpenCL libcl4u)
+	target_link_libraries (${PROJECT_NAME} OpenCL cl4u)
 endif(OPENCL)
 
-target_link_libraries(${PROJECT_NAME} libnn)
+target_link_libraries(${PROJECT_NAME} nn)
