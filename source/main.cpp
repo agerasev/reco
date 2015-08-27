@@ -6,44 +6,6 @@
 
 #include "reader.hpp"
 
-std::ostream &operator << (std::ostream &os, const Buffer &buffer)
-{
-	int size = buffer.getSize();
-	float *data = new float[size];
-	buffer.read(data);
-	// os << buffer.isValid() << ":  ";
-	for(int i = 0; i < size; ++i)
-		os << data[i] << ' ';
-	delete[] data;
-	return os;
-}
-
-void printLayer(const Layer *layer)
-{
-	std::cout << layer->getInput() << std::endl;
-	std::cout << layer->getOutput() << std::endl;
-}
-
-void printConn(const Conn *conn)
-{
-	std::cout << conn->getWeight() << std::endl;
-	std::cout << conn->getBias() << std::endl;
-}
-
-void printLayerError(const Layer_BP *layer)
-{
-	std::cout << layer->getInputError() << std::endl;
-	std::cout << layer->getOutputError() << std::endl;
-}
-
-void printConnGrad(const Conn_BP *conn)
-{
-	std::cout << conn->getWeightGrad() << std::endl;
-	std::cout << conn->getBiasGrad() << std::endl;
-}
-
-//#define PRINT_DEBUG
-
 int main(int argc, char *argv[])
 {
 	static const int LAYER_COUNT = 3;
@@ -131,7 +93,7 @@ int main(int argc, char *argv[])
 			
 			in->getInput().write(in_data);
 			
-			for(int i = 0; i < LAYER_COUNT + 1; ++i)
+			for(int i = 0; i < LAYER_COUNT; ++i)
 			{
 				net.stepForward();
 			}
@@ -154,28 +116,9 @@ int main(int argc, char *argv[])
 			cost += out->getCost(result);
 			out->setDesiredOutput(result);
 			
-			for(int i = 0; i < LAYER_COUNT; ++i)
+			for(int i = 0; i < LAYER_COUNT - 1; ++i)
 			{
-				if(i != 0)
-				{
-					net.stepBackward();
-				}
-				
-#ifdef PRINT_DEBUG
-				//printLayer(net.getLayer(0));
-				//printConn(net.getConn(0));
-				//printLayer(net.getLayer(1));
-				//printConn(net.getConn(1));
-				//printLayer(net.getLayer(2));
-				
-				//printLayerError(dynamic_cast<const Layer_BP *>(net.getLayer(0)));
-				//printConnGrad(dynamic_cast<const Conn_BP *>(net.getConn(0)));
-				printLayerError(dynamic_cast<const Layer_BP *>(net.getLayer(1)));
-				//printConnGrad(dynamic_cast<const Conn_BP *>(net.getConn(1)));
-				printLayerError(dynamic_cast<const Layer_BP *>(net.getLayer(2)));
-				
-				std::cout << std::endl;
-#endif
+				net.stepBackward();
 			}
 			
 			if((j + 1) % batch_size == 0)
@@ -229,7 +172,7 @@ int main(int argc, char *argv[])
 	destroyImageSet(train_set);
 	destroyImageSet(test_set);
 	
-	net.forConns([](Conn *conn) 
+	net.forConns([](Conn *conn)
 	{
 		delete conn;
 	});
