@@ -14,8 +14,7 @@
 
 int main(int argc, char *argv[])
 {
-	static const int LAYER_COUNT = 3;
-	const int LAYER_SIZE[LAYER_COUNT] = {28*28, 30, 10};
+	const int LAYER_SIZE[3] = {28*28, 30, 10};
 	
 	unsigned seed = 987654;
 	
@@ -26,7 +25,7 @@ int main(int argc, char *argv[])
 	Layer *in_sw, *in_hw;
 	Layer *out_sw, *out_hw;
 	
-	for(int i = 0; i < LAYER_COUNT; ++i)
+	for(int i = 0; i < 3; ++i)
 	{
 		LayerSW *layer_sw;
 		LayerHW *layer_hw;
@@ -46,7 +45,7 @@ int main(int argc, char *argv[])
 			in_sw = layer_sw;
 			in_hw = layer_hw;
 		}
-		else if(i == LAYER_COUNT - 1)
+		else if(i == 2)
 		{
 			out_sw = layer_sw;
 			out_hw = layer_hw;
@@ -56,7 +55,7 @@ int main(int argc, char *argv[])
 	}
 	
 	srand(seed);
-	for(int i = 0; i < LAYER_COUNT - 1; ++i)
+	for(int i = 0; i < 2; ++i)
 	{
 		Conn *conn = new ConnSW(i, LAYER_SIZE[i], LAYER_SIZE[i + 1]);
 		conn->getWeight().randomize();
@@ -65,7 +64,7 @@ int main(int argc, char *argv[])
 	}
 	
 	srand(seed);
-	for(int i = 0; i < LAYER_COUNT - 1; ++i)
+	for(int i = 0; i < 2; ++i)
 	{
 		Conn *conn = factory.newConn(i, LAYER_SIZE[i], LAYER_SIZE[i + 1]);
 		conn->getWeight().randomize();
@@ -87,7 +86,7 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 	
-	for(int i = 0; i < LAYER_COUNT - 1; ++i)
+	for(int i = 0; i < 2; ++i)
 	{
 		if(
 		   net_sw.getConn(i)->getWeight().getSize() != 
