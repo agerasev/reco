@@ -1,8 +1,14 @@
 #include <iostream>
 #include <string>
-#include <nn/bp/net.hpp>
-#include <nn/sw/bp/layerext.hpp>
-#include <nn/sw/bp/conn.hpp>
+
+#include <nn/net.hpp>
+
+#include <nn/sw/layerext.hpp>
+#include <nn/sw/conn.hpp>
+
+#include <nn/hw/factory.hpp>
+#include <nn/hw/layerext.hpp>
+#include <nn/hw/conn.hpp>
 
 #include "reader.hpp"
 
@@ -11,172 +17,177 @@ int main(int argc, char *argv[])
 	static const int LAYER_COUNT = 3;
 	const int LAYER_SIZE[LAYER_COUNT] = {28*28, 30, 10};
 	
-	srand(987654);
+	unsigned seed = 987654;
 	
-	Net_BP net;
+	FactoryHW factory("libnn/opencl/kernel.c");
 	
-	Layer_BP *in;
-	Layer_BP *out;
+	Net net_sw, net_hw;
+	
+	Layer *in_sw, *in_hw;
+	Layer *out_sw, *out_hw;
 	
 	for(int i = 0; i < LAYER_COUNT; ++i)
 	{
-		Layer_BP *layer;
+		LayerSW *layer_sw;
+		LayerHW *layer_hw;
 		if(i != 0)
-			layer = new LayerExtSW_BP<LayerFunc::SIGMOID|LayerCost::CROSS_ENTROPY>(i, LAYER_SIZE[i]);
+		{
+			layer_sw = new LayerExtSW<LayerFunc::SIGMOID>(i, LAYER_SIZE[i]);
+			layer_hw = factory.newLayer(i, LAYER_SIZE[i], LayerFunc::SIGMOID);
+		}
 		else
-			layer = new LayerSW_BP(i, LAYER_SIZE[i]);
+		{
+			layer_sw = new LayerSW(i, LAYER_SIZE[i]);
+			layer_hw = factory.newLayer(i, LAYER_SIZE[i]);
+		}
 		
 		if(i == 0)
-			in = layer;
+		{
+			in_sw = layer_sw;
+			in_hw = layer_hw;
+		}
 		else if(i == LAYER_COUNT - 1)
-			out = layer;
-		net.addLayer(layer);
+		{
+			out_sw = layer_sw;
+			out_hw = layer_hw;
+		}
+		net_sw.addLayer(layer_sw);
+		net_hw.addLayer(layer_hw);
 	}
 	
+	srand(seed);
 	for(int i = 0; i < LAYER_COUNT - 1; ++i)
 	{
-		Conn_BP *conn = new ConnSW_BP(i, LAYER_SIZE[i], LAYER_SIZE[i + 1]);
+		Conn *conn = new ConnSW(i, LAYER_SIZE[i], LAYER_SIZE[i + 1]);
 		conn->getWeight().randomize();
 		conn->getBias().randomize();
-		net.addConn(conn, i, i + 1);
+		net_sw.addConn(conn, i, i + 1);
 	}
 	
-	ImageSet *train_set = createImageSet("mnist/train-labels.idx1-ubyte", "mnist/train-images.idx3-ubyte");
+	srand(seed);
+	for(int i = 0; i < LAYER_COUNT - 1; ++i)
+	{
+		Conn *conn = factory.newConn(i, LAYER_SIZE[i], LAYER_SIZE[i + 1]);
+		conn->getWeight().randomize();
+		conn->getBias().randomize();
+		net_hw.addConn(conn, i, i + 1);
+	}
+	
 	ImageSet *test_set = createImageSet("mnist/t10k-labels.idx1-ubyte", "mnist/t10k-images.idx3-ubyte");
 	
-	if(train_set == nullptr)
-	{
-		std::cerr << "train set file error" << std::endl;
-		return 2;
-	}
 	if(test_set == nullptr)
 	{
 		std::cerr << "train set file error" << std::endl;
 		return 2;
 	}
 	
-	if(train_set->size_x != 28 || train_set->size_y != 28)
-	{
-		std::cerr << "train set image size is not 28x28" << std::endl;
-		return 1;
-	}
 	if(test_set->size_x != 28 || test_set->size_y != 28)
 	{
 		std::cerr << "test set image size is not 28x28" << std::endl;
 		return 1;
 	}
 	
-	const int batch_size = 10;
-	
-	float cost;
-	int score;
-	
-	for(int k = 0; k < 0x10; ++k)
+	for(int i = 0; i < LAYER_COUNT - 1; ++i)
 	{
-		std::cout << "epoch " << k << ':' << std::endl;
-		
-		score = 0;
-		cost = 0.0f;
-		for(int j = 0; j < train_set->size; ++j)
+		if(
+		   net_sw.getConn(i)->getWeight().getSize() != 
+		   net_hw.getConn(i)->getWeight().getSize() ||
+		   net_sw.getConn(i)->getBias().getSize() != 
+		   net_hw.getConn(i)->getBias().getSize()
+		   )
 		{
-			const int out_size = LAYER_SIZE[LAYER_COUNT - 1];
-			
-			float *in_data = train_set->images[j]->data;
-			float out_data[out_size];
-			float result[out_size];
-			
-			int digit = train_set->images[j]->digit;
-			for(int i = 0; i < out_size; ++i)
-			{
-				result[i] = i == digit ? 1.0f : 0.0f;
-			}
-			
-			in->getInput().write(in_data);
-			
-			for(int i = 0; i < LAYER_COUNT; ++i)
-			{
-				net.stepForward();
-			}
-			
-			out->getOutput().read(out_data);
-			
-			float max_val = out_data[0];
-			int max_digit = 0;
-			for(int i = 1; i < 10; ++i)
-			{
-				if(out_data[i] > max_val)
-				{
-					max_val = out_data[i];
-					max_digit = i;
-				}
-			}
-			if(max_digit == digit)
-				++score;
-			
-			cost += out->getCost(result);
-			out->setDesiredOutput(result);
-			
-			for(int i = 0; i < LAYER_COUNT - 1; ++i)
-			{
-				net.stepBackward();
-			}
-			
-			if((j + 1) % batch_size == 0)
-			{
-				net.commitGrad(1.0f);
-			}
+			std::cerr << "weight and bias sizes not match" << std::endl;
+			return 3;
 		}
 		
-		std::cout << "train set:" << std::endl;
-		std::cout << "score: " << score << " / " << train_set->size << std::endl;
-		std::cout << "average cost: " << cost/train_set->size << std::endl;
+		int weight_size = net_sw.getConn(i)->getWeight().getSize();
+		int bias_size = net_sw.getConn(i)->getBias().getSize();
 		
-		score = 0;
-		for(int j = 0; j < test_set->size; ++j)
+		float *weight_sw, *weight_hw, *bias_sw, *bias_hw;
+		weight_sw = new float[weight_size];
+		weight_hw = new float[weight_size];
+		bias_sw = new float[bias_size];
+		bias_hw = new float[bias_size];
+		
+		net_sw.getConn(i)->getWeight().read(weight_sw);
+		net_hw.getConn(i)->getWeight().read(weight_hw);
+		net_sw.getConn(i)->getBias().read(bias_sw);
+		net_hw.getConn(i)->getBias().read(bias_hw);
+		
+		float weight_diff = 0.0f, bias_diff = 0.0f;
+		for(int j = 0; j < weight_size; ++j)
 		{
-			const int out_size = LAYER_SIZE[LAYER_COUNT - 1];
-			
-			float *in_data = test_set->images[j]->data;
-			float out_data[out_size];
-			int digit = test_set->images[j]->digit;
-			
-			in->getInput().write(in_data);
-			
-			for(int i = 0; i < LAYER_COUNT + 1; ++i)
-			{
-				net.stepForward();
-			}
-			
-			out->getOutput().read(out_data);
-			
-			float max_val = out_data[0];
-			int max_digit = 0;
-			for(int i = 1; i < 10; ++i)
-			{
-				if(out_data[i] > max_val)
-				{
-					max_val = out_data[i];
-					max_digit = i;
-				}
-			}
-			if(max_digit == digit)
-				++score;
+			weight_diff += weight_sw[j] - weight_hw[j];
 		}
+		for(int j = 0; j < bias_size; ++j)
+		{
+			bias_diff += bias_sw[j] - bias_hw[j];
+		}
+		delete[] weight_hw;
+		delete[] weight_sw;
+		delete[] bias_hw;
+		delete[] bias_sw;
 		
-		std::cout << "test set:" << std::endl;
-		std::cout << "score: " << score << " / " << test_set->size << std::endl;
-		
-		std::cout << std::endl;
+		std::cout << "conn " << i << ":" << std::endl;
+		std::cout << "weight difference: " << weight_diff << std::endl;
+		std::cout << "bias difference: " << bias_diff << std::endl;
 	}
 	
-	destroyImageSet(train_set);
+	/*
+	score = 0;
+	for(int j = 0; j < test_set->size; ++j)
+	{
+		const int out_size = LAYER_SIZE[LAYER_COUNT - 1];
+		
+		float *in_data = test_set->images[j]->data;
+		float out_data[out_size];
+		int digit = test_set->images[j]->digit;
+		
+		in->getInput().write(in_data);
+		
+		for(int i = 0; i < LAYER_COUNT + 1; ++i)
+		{
+			net.stepForward();
+		}
+		
+		out->getOutput().read(out_data);
+		
+		float max_val = out_data[0];
+		int max_digit = 0;
+		for(int i = 1; i < 10; ++i)
+		{
+			if(out_data[i] > max_val)
+			{
+				max_val = out_data[i];
+				max_digit = i;
+			}
+		}
+		if(max_digit == digit)
+			++score;
+	}
+	
+	std::cout << "test set:" << std::endl;
+	std::cout << "score: " << score << " / " << test_set->size << std::endl;
+	
+	std::cout << std::endl;
+	*/
+	
 	destroyImageSet(test_set);
 	
-	net.forConns([](Conn *conn)
+	net_sw.forConns([](Conn *conn)
 	{
 		delete conn;
 	});
-	net.forLayers([](Layer *layer)
+	net_sw.forLayers([](Layer *layer)
+	{
+		delete layer;
+	});
+	
+	net_hw.forConns([](Conn *conn)
+	{
+		delete conn;
+	});
+	net_hw.forLayers([](Layer *layer)
 	{
 		delete layer;
 	});
