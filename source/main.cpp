@@ -11,6 +11,7 @@
 #include <nn/hw/conn.hpp>
 
 #include "reader.hpp"
+#include "print.h"
 
 int main(int argc, char *argv[])
 {
@@ -54,21 +55,25 @@ int main(int argc, char *argv[])
 		net_hw.addLayer(layer_hw);
 	}
 	
+	std::cout << "ConnSW:" << std::endl;
 	srand(seed);
 	for(int i = 0; i < 2; ++i)
 	{
 		Conn *conn = new ConnSW(i, LAYER_SIZE[i], LAYER_SIZE[i + 1]);
 		conn->getWeight().randomize();
 		conn->getBias().randomize();
+		printConn(conn);
 		net_sw.addConn(conn, i, i + 1);
 	}
 	
+	std::cout << "ConnHW:" << std::endl;
 	srand(seed);
 	for(int i = 0; i < 2; ++i)
 	{
 		Conn *conn = factory.newConn(i, LAYER_SIZE[i], LAYER_SIZE[i + 1]);
 		conn->getWeight().randomize();
 		conn->getBias().randomize();
+		printConn(conn);
 		net_hw.addConn(conn, i, i + 1);
 	}
 	
