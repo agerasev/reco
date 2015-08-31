@@ -11,7 +11,7 @@
 #include <nn/hw/conn.hpp>
 
 #include "reader.hpp"
-#include "print.h"
+#include "print.hpp"
 
 int main(int argc, char *argv[])
 {
@@ -55,128 +55,56 @@ int main(int argc, char *argv[])
 		net_hw.addLayer(layer_hw);
 	}
 	
-	std::cout << "ConnSW:" << std::endl;
 	srand(seed);
 	for(int i = 0; i < 2; ++i)
 	{
 		Conn *conn = new ConnSW(i, LAYER_SIZE[i], LAYER_SIZE[i + 1]);
 		conn->getWeight().randomize();
 		conn->getBias().randomize();
-		printConn(conn);
 		net_sw.addConn(conn, i, i + 1);
 	}
 	
-	std::cout << "ConnHW:" << std::endl;
 	srand(seed);
 	for(int i = 0; i < 2; ++i)
 	{
 		Conn *conn = factory.newConn(i, LAYER_SIZE[i], LAYER_SIZE[i + 1]);
 		conn->getWeight().randomize();
 		conn->getBias().randomize();
-		printConn(conn);
 		net_hw.addConn(conn, i, i + 1);
 	}
 	
-	ImageSet *test_set = createImageSet("mnist/t10k-labels.idx1-ubyte", "mnist/t10k-images.idx3-ubyte");
+	ImageSet test_set("mnist/t10k-labels.idx1-ubyte", "mnist/t10k-images.idx3-ubyte");
 	
-	if(test_set == nullptr)
-	{
-		std::cerr << "train set file error" << std::endl;
-		return 2;
-	}
-	
-	if(test_set->size_x != 28 || test_set->size_y != 28)
+	if(test_set.getImageSizeX() != 28 || test_set.getImageSizeY() != 28)
 	{
 		std::cerr << "test set image size is not 28x28" << std::endl;
 		return 1;
 	}
 	
-	for(int i = 0; i < 2; ++i)
+	for(int j = 0; j < test_set.getSize(); ++j)
 	{
-		if(
-		   net_sw.getConn(i)->getWeight().getSize() != 
-		   net_hw.getConn(i)->getWeight().getSize() ||
-		   net_sw.getConn(i)->getBias().getSize() != 
-		   net_hw.getConn(i)->getBias().getSize()
-		   )
+		const float *in_data = test_set.getImages()[j].getData().data();
+		float out_data_sw[10], out_data_hw[10];
+		
+		in_sw->getInput().write(in_data);
+		in_hw->getInput().write(in_data);
+		
+		for(int i = 0; i < 3; ++i)
 		{
-			std::cerr << "weight and bias sizes not match" << std::endl;
-			return 3;
+			net_sw.stepForward();
+			net_hw.stepForward();
 		}
 		
-		int weight_size = net_sw.getConn(i)->getWeight().getSize();
-		int bias_size = net_sw.getConn(i)->getBias().getSize();
+		out_sw->getOutput().read(out_data_sw);
+		out_hw->getOutput().read(out_data_hw);
 		
-		float *weight_sw, *weight_hw, *bias_sw, *bias_hw;
-		weight_sw = new float[weight_size];
-		weight_hw = new float[weight_size];
-		bias_sw = new float[bias_size];
-		bias_hw = new float[bias_size];
-		
-		net_sw.getConn(i)->getWeight().read(weight_sw);
-		net_hw.getConn(i)->getWeight().read(weight_hw);
-		net_sw.getConn(i)->getBias().read(bias_sw);
-		net_hw.getConn(i)->getBias().read(bias_hw);
-		
-		float weight_diff = 0.0f, bias_diff = 0.0f;
-		for(int j = 0; j < weight_size; ++j)
+		float diff = 0.0f;
+		for(int i = 0; i < 10; ++i)
 		{
-			weight_diff += weight_sw[j] - weight_hw[j];
+			diff += out_data_sw[i] - out_data_hw[i];
 		}
-		for(int j = 0; j < bias_size; ++j)
-		{
-			bias_diff += bias_sw[j] - bias_hw[j];
-		}
-		delete[] weight_hw;
-		delete[] weight_sw;
-		delete[] bias_hw;
-		delete[] bias_sw;
-		
-		std::cout << "conn " << i << ":" << std::endl;
-		std::cout << "weight difference: " << weight_diff << std::endl;
-		std::cout << "bias difference: " << bias_diff << std::endl;
+		std::cout << j << " difference: " << diff << std::endl;
 	}
-	
-	/*
-	score = 0;
-	for(int j = 0; j < test_set->size; ++j)
-	{
-		const int out_size = LAYER_SIZE[LAYER_COUNT - 1];
-		
-		float *in_data = test_set->images[j]->data;
-		float out_data[out_size];
-		int digit = test_set->images[j]->digit;
-		
-		in->getInput().write(in_data);
-		
-		for(int i = 0; i < LAYER_COUNT + 1; ++i)
-		{
-			net.stepForward();
-		}
-		
-		out->getOutput().read(out_data);
-		
-		float max_val = out_data[0];
-		int max_digit = 0;
-		for(int i = 1; i < 10; ++i)
-		{
-			if(out_data[i] > max_val)
-			{
-				max_val = out_data[i];
-				max_digit = i;
-			}
-		}
-		if(max_digit == digit)
-			++score;
-	}
-	
-	std::cout << "test set:" << std::endl;
-	std::cout << "score: " << score << " / " << test_set->size << std::endl;
-	
-	std::cout << std::endl;
-	*/
-	
-	destroyImageSet(test_set);
 	
 	net_sw.forConns([](Conn *conn)
 	{
