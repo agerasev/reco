@@ -34,6 +34,7 @@ std::ostream &operator << (std::ostream &os, const Conn &conn)
 
 std::ostream &operator << (std::ostream &os, const Layer_BP &layer)
 {
+	os << static_cast<const Layer &>(layer);
 	os << layer.getInputError() << std::endl;
 	os << layer.getOutputError() << std::endl;
 	return os;
@@ -41,6 +42,7 @@ std::ostream &operator << (std::ostream &os, const Layer_BP &layer)
 
 std::ostream &operator << (std::ostream &os, const Conn_BP &conn)
 {
+	os << static_cast<const Conn &>(conn);
 	os << conn.getWeightGrad() << std::endl;
 	os << conn.getBiasGrad() << std::endl;
 	return os;
