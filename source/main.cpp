@@ -12,183 +12,177 @@
 
 #include "reader.hpp"
 #include "print.hpp"
+#include <iostream>
+#include <string>
+#include <nn/bp/net.hpp>
+#include <nn/sw/bp/layerext.hpp>
+#include <nn/sw/bp/conn.hpp>
+
+#include "reader.hpp"
 
 int main(int argc, char *argv[])
 {
-	const int LAYER_SIZE[3] = {28*28, 30, 10};
+	static const int LAYER_COUNT = 3;
+	const int LAYER_SIZE[LAYER_COUNT] = {28*28, 30, 10};
 	
-	unsigned seed = 987654;
+	srand(987654);
 	
 	FactoryHW_BP factory("libnn/opencl/kernel.c");
 	
-	Net_BP net_sw, net_hw;
+	Net_BP net;
 	
-	Layer_BP *in_sw, *in_hw;
-	Layer_BP *out_sw, *out_hw;
+	Layer_BP *in;
+	Layer_BP *out;
 	
-	for(int i = 0; i < 3; ++i)
+	for(int i = 0; i < LAYER_COUNT; ++i)
 	{
-		LayerSW_BP *layer_sw;
-		LayerHW_BP *layer_hw;
+		Layer_BP *layer;
 		if(i != 0)
-		{
-			layer_sw = new LayerExtSW_BP<LayerFunc::SIGMOID>(i, LAYER_SIZE[i]);
-			layer_hw = factory.newLayer(i, LAYER_SIZE[i], LayerFunc::SIGMOID);
-		}
+			layer = factory.newLayer(i, LAYER_SIZE[i], LayerFunc::SIGMOID);
 		else
-		{
-			layer_sw = new LayerSW_BP(i, LAYER_SIZE[i]);
-			layer_hw = factory.newLayer(i, LAYER_SIZE[i]);
-		}
+			layer = factory.newLayer(i, LAYER_SIZE[i]);
 		
 		if(i == 0)
-		{
-			in_sw = layer_sw;
-			in_hw = layer_hw;
-		}
-		else if(i == 2)
-		{
-			out_sw = layer_sw;
-			out_hw = layer_hw;
-		}
-		net_sw.addLayer(layer_sw);
-		net_hw.addLayer(layer_hw);
+			in = layer;
+		else if(i == LAYER_COUNT - 1)
+			out = layer;
+		net.addLayer(layer);
 	}
 	
-	srand(seed);
-	for(int i = 0; i < 2; ++i)
+	for(int i = 0; i < LAYER_COUNT - 1; ++i)
 	{
-		Conn *conn = new ConnSW_BP(i, LAYER_SIZE[i], LAYER_SIZE[i + 1]);
+		Conn_BP *conn = factory.newConn(i, LAYER_SIZE[i], LAYER_SIZE[i + 1]);
 		conn->getWeight().randomize();
 		conn->getBias().randomize();
-		net_sw.addConn(conn, i, i + 1);
+		net.addConn(conn, i, i + 1);
 	}
 	
-	srand(seed);
-	for(int i = 0; i < 2; ++i)
-	{
-		Conn *conn = factory.newConn(i, LAYER_SIZE[i], LAYER_SIZE[i + 1]);
-		conn->getWeight().randomize();
-		conn->getBias().randomize();
-		net_hw.addConn(conn, i, i + 1);
-	}
-	
+	ImageSet train_set("mnist/train-labels.idx1-ubyte", "mnist/train-images.idx3-ubyte");
 	ImageSet test_set("mnist/t10k-labels.idx1-ubyte", "mnist/t10k-images.idx3-ubyte");
 	
+	if(train_set.getImageSizeX() != 28 || train_set.getImageSizeY() != 28)
+	{
+		std::cerr << "train set image size is not 28x28" << std::endl;
+		return 1;
+	}
 	if(test_set.getImageSizeX() != 28 || test_set.getImageSizeY() != 28)
 	{
 		std::cerr << "test set image size is not 28x28" << std::endl;
 		return 1;
 	}
 	
-	for(int j = 0; j < 1; ++j)
+	const int batch_size = 10;
+	
+	float cost;
+	int score;
+	
+	for(int k = 0; k < 0x10; ++k)
 	{
-		const float *in_data = test_set.getImages()[j].getData().data();
-		float out_data_sw[10], out_data_hw[10];
-		float result[10];
-					
-		int digit = test_set.getImages()[j].getDigit();
-		for(int i = 0; i < 10; ++i)
+		std::cout << "epoch " << k << ':' << std::endl;
+		
+		score = 0;
+		cost = 0.0f;
+		for(int j = 0; j < train_set.getSize(); ++j)
 		{
-			result[i] = i == digit ? 1.0f : 0.0f;
-		}
-		
-		in_sw->getInput().write(in_data);
-		in_hw->getInput().write(in_data);
-		
-		for(int i = 0; i < 3; ++i)
-		{
-			net_sw.stepForward();
-			net_hw.stepForward();
-		}
-		
-		out_sw->getOutput().read(out_data_sw);
-		out_hw->getOutput().read(out_data_hw);
-		
-		float diff = 0.0f;
-		for(int i = 0; i < 10; ++i)
-		{
-			float val = out_data_sw[i] - out_data_hw[i];
-			diff += val*val;
-		}
-		// std::cout << j << " output difference: " << diff << std::endl;
-		
-		/*
-		float max_val_sw = out_data_sw[0], max_val_hw = out_data_hw[0];
-		int max_digit_sw = 0, max_digit_hw = 0;
-		for(int i = 1; i < 10; ++i)
-		{
-			if(out_data_sw[i] > max_val_sw)
+			const int out_size = LAYER_SIZE[LAYER_COUNT - 1];
+			
+			const float *in_data = train_set.getImages()[j].getData().data();
+			float out_data[out_size];
+			float result[out_size];
+			
+			int digit = train_set.getImages()[j].getDigit();
+			for(int i = 0; i < out_size; ++i)
 			{
-				max_val_sw = out_data_sw[i];
-				max_digit_sw = i;
+				result[i] = i == digit ? 1.0f : 0.0f;
 			}
-			if(out_data_hw[i] > max_val_hw)
+			
+			in->getInput().write(in_data);
+			
+			for(int i = 0; i < LAYER_COUNT; ++i)
 			{
-				max_val_hw = out_data_hw[i];
-				max_digit_hw = i;
+				net.stepForward();
+			}
+			
+			out->getOutput().read(out_data);
+			
+			float max_val = out_data[0];
+			int max_digit = 0;
+			for(int i = 1; i < 10; ++i)
+			{
+				if(out_data[i] > max_val)
+				{
+					max_val = out_data[i];
+					max_digit = i;
+				}
+			}
+			if(max_digit == digit)
+				++score;
+			
+			cost += out->getCost(result);
+			out->setDesiredOutput(result);
+			
+			for(int i = 0; i < LAYER_COUNT - 1; ++i)
+			{
+				net.stepBackward();
+			}
+			
+			if((j + 1) % batch_size == 0)
+			{
+				net.commitGrad(1.0f);
 			}
 		}
-		*/
 		
-		out_sw->setDesiredOutput(result);
-		out_hw->setDesiredOutput(result);
-
-		//std::cout << j << " cost difference: " << out_sw->getCost(result) - out_hw->getCost(result) << std::endl;
+		std::cout << "train set:" << std::endl;
+		std::cout << "score: " << score << " / " << train_set.getSize() << std::endl;
+		std::cout << "average cost: " << cost/train_set.getSize() << std::endl;
 		
-		for(int i = 0; i < 2; ++i)
+		score = 0;
+		for(int j = 0; j < test_set.getSize(); ++j)
 		{
-			net_sw.stepBackward();
-			net_hw.stepBackward();
+			const int out_size = LAYER_SIZE[LAYER_COUNT - 1];
+			
+			const float *in_data = test_set.getImages()[j].getData().data();
+			float out_data[out_size];
+			int digit = test_set.getImages()[j].getDigit();
+			
+			in->getInput().write(in_data);
+			
+			for(int i = 0; i < LAYER_COUNT + 1; ++i)
+			{
+				net.stepForward();
+			}
+			
+			out->getOutput().read(out_data);
+			
+			float max_val = out_data[0];
+			int max_digit = 0;
+			for(int i = 1; i < 10; ++i)
+			{
+				if(out_data[i] > max_val)
+				{
+					max_val = out_data[i];
+					max_digit = i;
+				}
+			}
+			if(max_digit == digit)
+				++score;
 		}
-
-		/*
-		int conn_no = 1;
-		int weight_grad_size = net_sw.getConn(conn_no)->getWeight().getSize();
-		float *weight_grad_sw = new float[weight_grad_size], *weight_grad_hw = new float[weight_grad_size];
-		dynamic_cast<const Conn_BP *>(net_sw.getConn(conn_no))->getWeightGrad().read(weight_grad_sw);
-		dynamic_cast<const Conn_BP *>(net_hw.getConn(conn_no))->getWeightGrad().read(weight_grad_hw);
-		diff = 0.0f;
-		for(int i = 0; i < weight_grad_size; ++i)
-		{
-			float val = weight_grad_sw[i] - weight_grad_hw[i];
-			diff += val*val;
-		}
-		delete[] weight_grad_sw;
-		delete[] weight_grad_hw;
-		std::cout << j << " weight grad difference: " << diff << std::endl;
-		*/
-
-		net_sw.commitGrad(1.0f);
-		net_hw.commitGrad(1.0f);
-
-		std::cout << net_sw.getConn(0)->getWeight() << std::endl;
-		std::cout << net_hw.getConn(0)->getWeight() << std::endl;
-		std::cout << net_sw.getConn(0)->getBias() << std::endl;
-		std::cout << net_hw.getConn(0)->getBias() << std::endl;
-		std::cout << net_sw.getConn(1)->getWeight() << std::endl;
-		std::cout << net_hw.getConn(1)->getWeight() << std::endl;
-		std::cout << net_sw.getConn(1)->getBias() << std::endl;
-		std::cout << net_hw.getConn(1)->getBias() << std::endl;
+		
+		std::cout << "test set:" << std::endl;
+		std::cout << "score: " << score << " / " << test_set.getSize() << std::endl;
+		
+		std::cout << std::endl;
 	}
 	
-	net_sw.forConns([](Conn *conn)
+	net.forConns([](Conn *conn)
 	{
 		delete conn;
 	});
-	net_sw.forLayers([](Layer *layer)
-	{
-		delete layer;
-	});
-	
-	net_hw.forConns([](Conn *conn)
-	{
-		delete conn;
-	});
-	net_hw.forLayers([](Layer *layer)
+	net.forLayers([](Layer *layer)
 	{
 		delete layer;
 	});
 	
 	return 0;
 }
+
