@@ -20,6 +20,19 @@
 
 #include "reader.hpp"
 
+void logProgramTime(cl::program *program)
+{
+	cl::map<cl::kernel *> &kernels = program->get_kernel_map();
+	unsigned long total = 0;
+	for(cl::kernel *k : kernels)
+	{
+		printf("%03lf ms : '%s'\n", k->get_time()*1e-6, k->get_name());
+		total += k->get_time();
+		k->clear_time();
+	}
+	printf("total: %03lf ms\n", total*1e-6);
+}
+
 int main(int argc, char *argv[])
 {
 	static const int LAYER_COUNT = 3;
@@ -27,7 +40,7 @@ int main(int argc, char *argv[])
 	
 	srand(987654);
 	
-	FactoryHW_BP factory("libnn/opencl/kernel.c");
+	FactoryHW_BP factory;
 	
 	Net_BP net;
 	
@@ -131,11 +144,13 @@ int main(int argc, char *argv[])
 				net.commitGrad(1.0f);
 			}
 		}
+		logProgramTime(factory.getProgram());
 		
 		std::cout << "train set:" << std::endl;
 		std::cout << "score: " << score << " / " << train_set.getSize() << std::endl;
 		std::cout << "average cost: " << cost/train_set.getSize() << std::endl;
 		
+		/*
 		score = 0;
 		for(int j = 0; j < test_set.getSize(); ++j)
 		{
@@ -170,6 +185,7 @@ int main(int argc, char *argv[])
 		
 		std::cout << "test set:" << std::endl;
 		std::cout << "score: " << score << " / " << test_set.getSize() << std::endl;
+		*/
 		
 		std::cout << std::endl;
 	}
