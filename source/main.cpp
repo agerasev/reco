@@ -3,35 +3,34 @@
 
 #include <nn/bp/net.hpp>
 
-#include <nn/sw/bp/layerext.hpp>
-#include <nn/sw/bp/conn.hpp>
-
+#ifdef NN_OPENCL
 #include <nn/hw/bp/factory.hpp>
 #include <nn/hw/bp/layer.hpp>
 #include <nn/hw/bp/conn.hpp>
+#else
+#include <nn/sw/bp/layerext.hpp>
+#include <nn/sw/bp/conn.hpp>
+#endif
 
 #include "reader.hpp"
 #include "print.hpp"
-#include <iostream>
-#include <string>
-#include <nn/bp/net.hpp>
-#include <nn/sw/bp/layerext.hpp>
-#include <nn/sw/bp/conn.hpp>
 
-#include "reader.hpp"
+#define PRINT_PLOT
 
+#ifdef NN_OPENCL
 void logProgramTime(cl::program *program)
 {
 	cl::map<cl::kernel *> &kernels = program->get_kernel_map();
 	unsigned long total = 0;
 	for(cl::kernel *k : kernels)
 	{
-		printf("%03lf ms : '%s'\n", k->get_time()*1e-6, k->get_name());
+		printf("%03lf ms, %d times : '%s'\n", k->get_time()*1e-6, k->get_count(), k->get_name());
 		total += k->get_time();
-		k->clear_time();
+		k->clear_counter();
 	}
 	printf("total: %03lf ms\n", total*1e-6);
 }
+#endif
 
 int main(int argc, char *argv[])
 {
@@ -40,18 +39,21 @@ int main(int argc, char *argv[])
 	
 	srand(987654);
 	
+#ifdef NN_OPENCL
 	FactoryHW_BP factory;
+#endif
 	
 	Net_BP net;
 	
 	Layer_BP *in;
 	Layer_BP *out;
 	
+#ifdef NN_OPENCL
 	for(int i = 0; i < LAYER_COUNT; ++i)
 	{
 		Layer_BP *layer;
 		if(i != 0)
-			layer = factory.newLayer(i, LAYER_SIZE[i], LayerFunc::SIGMOID);
+			layer = factory.newLayer(i, LAYER_SIZE[i], LayerFunc::SIGMOID | LayerCost::CROSS_ENTROPY);
 		else
 			layer = factory.newLayer(i, LAYER_SIZE[i]);
 		
@@ -69,6 +71,30 @@ int main(int argc, char *argv[])
 		conn->getBias().randomize();
 		net.addConn(conn, i, i + 1);
 	}
+#else
+	for(int i = 0; i < LAYER_COUNT; ++i)
+	{
+		Layer_BP *layer;
+		if(i != 0)
+			layer = new LayerExtSW_BP<LayerFunc::SIGMOID | LayerCost::CROSS_ENTROPY>(i, LAYER_SIZE[i]);
+		else
+			layer = new LayerSW_BP(i, LAYER_SIZE[i]);
+		
+		if(i == 0)
+			in = layer;
+		else if(i == LAYER_COUNT - 1)
+			out = layer;
+		net.addLayer(layer);
+	}
+	
+	for(int i = 0; i < LAYER_COUNT - 1; ++i)
+	{
+		Conn_BP *conn = new ConnSW_BP(i, LAYER_SIZE[i], LAYER_SIZE[i + 1]);
+		conn->getWeight().randomize();
+		conn->getBias().randomize();
+		net.addConn(conn, i, i + 1);
+	}
+#endif
 	
 	ImageSet train_set("mnist/train-labels.idx1-ubyte", "mnist/train-images.idx3-ubyte");
 	ImageSet test_set("mnist/t10k-labels.idx1-ubyte", "mnist/t10k-images.idx3-ubyte");
@@ -89,9 +115,11 @@ int main(int argc, char *argv[])
 	float cost;
 	int score;
 	
-	for(int k = 0; k < 0x10; ++k)
+	for(int k = 0; k < 0x20; ++k)
 	{
+#ifdef PRINT_INFO
 		std::cout << "epoch " << k << ':' << std::endl;
+#endif
 		
 		score = 0;
 		cost = 0.0f;
@@ -144,13 +172,18 @@ int main(int argc, char *argv[])
 				net.commitGrad(1.0f);
 			}
 		}
-		logProgramTime(factory.getProgram());
 		
+#if defined(PRINT_INFO)
+#ifdef NN_OPENCL
+		logProgramTime(factory.getProgram());
+#endif // NN_OPENCL
 		std::cout << "train set:" << std::endl;
 		std::cout << "score: " << score << " / " << train_set.getSize() << std::endl;
 		std::cout << "average cost: " << cost/train_set.getSize() << std::endl;
+#elif defined(PRINT_PLOT)
+		std::cout << float(score)/train_set.getSize() << " "; 
+#endif
 		
-		/*
 		score = 0;
 		for(int j = 0; j < test_set.getSize(); ++j)
 		{
@@ -183,11 +216,13 @@ int main(int argc, char *argv[])
 				++score;
 		}
 		
+#if defined(PRINT_INFO)
 		std::cout << "test set:" << std::endl;
 		std::cout << "score: " << score << " / " << test_set.getSize() << std::endl;
-		*/
-		
+#elif defined(PRINT_PLOT)
+		std::cout << float(score)/test_set.getSize() << " ";
 		std::cout << std::endl;
+#endif
 	}
 	
 	net.forConns([](Conn *conn)

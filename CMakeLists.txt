@@ -8,22 +8,19 @@ elseif (MSVC)
 	
 endif()
 
-
 set(SOURCES 
 	source/main.cpp
 )
 
-add_executable(reco ${SOURCES})
+add_executable(${PROJECT_NAME} ${SOURCES})
 
 add_subdirectory(libnn)
 include_directories(libnn/include)
 
-find_package(OpenCL)
-if(OPENCL_FOUND)
-	message(STATUS "OPENCL_INCLUDE_DIRS: " ${OPENCL_INCLUDE_DIRS})
-	message(STATUS "OPENCL_LIBRARIES: " ${OPENCL_LIBRARIES})
-	include_directories(libnn/libcl4u/include ${OPENCL_INCLUDE_DIRS})
-	target_link_libraries (${PROJECT_NAME} ${OPENCL_LIBRARIES} cl4u)
-endif(OPENCL_FOUND)
+if(OPENCL)
+	message(STATUS "Hardware acceleration via OpenCL enabled")
+	add_definitions(-DNN_OPENCL)
+	include_directories(libnn/libcl4u/include)
+endif(OPENCL)
 
 target_link_libraries(${PROJECT_NAME} nn)

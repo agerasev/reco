@@ -1,11 +1,8 @@
 *~
 
+test/
 mnist/
 build/
 CMakeFiles
 
-*.creator
-*.files
-*.includes
-*.config
-*.user
+reco.*
