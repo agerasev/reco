@@ -15,7 +15,8 @@
 #include "reader.hpp"
 #include "print.hpp"
 
-#define PRINT_PLOT
+#define PRINT_INFO
+// #define TEST
 
 #ifdef NN_OPENCL
 void logProgramTime(cl::program *program)
@@ -96,8 +97,8 @@ int main(int argc, char *argv[])
 	}
 #endif
 	
-	ImageSet train_set("mnist/train-labels.idx1-ubyte", "mnist/train-images.idx3-ubyte");
-	ImageSet test_set("mnist/t10k-labels.idx1-ubyte", "mnist/t10k-images.idx3-ubyte");
+	ImageSet test_set("mnist/train-labels.idx1-ubyte", "mnist/train-images.idx3-ubyte");
+	ImageSet train_set("mnist/t10k-labels.idx1-ubyte", "mnist/t10k-images.idx3-ubyte");
 	
 	if(train_set.getImageSizeX() != 28 || train_set.getImageSizeY() != 28)
 	{
@@ -115,7 +116,7 @@ int main(int argc, char *argv[])
 	float cost;
 	int score;
 	
-	for(int k = 0; k < 0x20; ++k)
+	for(int k = 0; k < 0x1; ++k)
 	{
 #ifdef PRINT_INFO
 		std::cout << "epoch " << k << ':' << std::endl;
@@ -184,6 +185,7 @@ int main(int argc, char *argv[])
 		std::cout << float(score)/train_set.getSize() << " "; 
 #endif
 		
+#ifdef TEST
 		score = 0;
 		for(int j = 0; j < test_set.getSize(); ++j)
 		{
@@ -223,6 +225,7 @@ int main(int argc, char *argv[])
 		std::cout << float(score)/test_set.getSize() << " ";
 		std::cout << std::endl;
 #endif
+#endif // TEST
 	}
 	
 	net.forConns([](Conn *conn)
