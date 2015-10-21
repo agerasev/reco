@@ -15,8 +15,9 @@
 #include "reader.hpp"
 #include "print.hpp"
 
-#define PRINT_INFO
+#define PRINT_PLOT
 #define TEST
+#define CROSSENTROPY
 
 #ifdef NN_OPENCL
 void logProgramTime(cl::program *program)
@@ -54,7 +55,11 @@ int main(int argc, char *argv[])
 	{
 		Layer_BP *layer;
 		if(i != 0)
+#ifdef CROSSENTROPY
 			layer = factory.newLayer(i, LAYER_SIZE[i], LayerFunc::SIGMOID | LayerCost::CROSS_ENTROPY);
+#else
+			layer = factory.newLayer(i, LAYER_SIZE[i], LayerFunc::SIGMOID);
+#endif
 		else
 			layer = factory.newLayer(i, LAYER_SIZE[i]);
 		
@@ -77,7 +82,11 @@ int main(int argc, char *argv[])
 	{
 		Layer_BP *layer;
 		if(i != 0)
+#ifdef CROSSENTROPY
 			layer = new LayerExtSW_BP<LayerFunc::SIGMOID | LayerCost::CROSS_ENTROPY>(i, LAYER_SIZE[i]);
+#else
+			layer = new LayerExtSW_BP<LayerFunc::SIGMOID>(i, LAYER_SIZE[i]);
+#endif
 		else
 			layer = new LayerSW_BP(i, LAYER_SIZE[i]);
 		
@@ -122,17 +131,19 @@ int main(int argc, char *argv[])
 		std::cout << "epoch " << k << ':' << std::endl;
 #endif
 		
+		train_set.shuffle();
+		
 		score = 0;
 		cost = 0.0f;
 		for(int j = 0; j < train_set.getSize(); ++j)
 		{
 			const int out_size = LAYER_SIZE[LAYER_COUNT - 1];
 			
-			const float *in_data = train_set.getImages()[j].getData().data();
+			const float *in_data = train_set.getImages()[j]->getData().data();
 			float out_data[out_size];
 			float result[out_size];
 			
-			int digit = train_set.getImages()[j].getDigit();
+			int digit = train_set.getImages()[j]->getDigit();
 			for(int i = 0; i < out_size; ++i)
 			{
 				result[i] = i == digit ? 1.0f : 0.0f;
@@ -191,9 +202,9 @@ int main(int argc, char *argv[])
 		{
 			const int out_size = LAYER_SIZE[LAYER_COUNT - 1];
 			
-			const float *in_data = test_set.getImages()[j].getData().data();
+			const float *in_data = test_set.getImages()[j]->getData().data();
 			float out_data[out_size];
-			int digit = test_set.getImages()[j].getDigit();
+			int digit = test_set.getImages()[j]->getDigit();
 			
 			in->getInput().write(in_data);
 			

@@ -87,7 +87,7 @@ private:
 	int size;
 	int img_sx, img_sy;
 	
-	std::vector<Image> images;
+	std::vector<Image *> images;
 	
 	class File
 	{
@@ -143,19 +143,26 @@ public:
 		char buf;
 		for(int i = 0; i < inum; ++i)
 		{
-			this->images[i].setSize(cols, rows);
+			this->images[i] = new Image();
+			this->images[i]->setSize(cols, rows);
 			
 			buf = fgetc(ls.file);
-			this->images[i].setDigit(buf);
+			this->images[i]->setDigit(buf);
 			
 			for(int iy = 0; iy < rows; ++iy)
 			{
 				for(int ix = 0; ix < cols; ++ix)
 				{
 					buf = fgetc(is.file);
-					this->images[i].getData()[iy*cols + ix] = float(static_cast<unsigned char>(buf))/255.0;
+					this->images[i]->getData()[iy*cols + ix] = float(static_cast<unsigned char>(buf))/255.0;
 				}
 			}
+		}
+	}
+	
+	~ImageSet() {
+		for(Image *img : images) {
+			delete img;
 		}
 	}
 	
@@ -174,8 +181,17 @@ public:
 		return size;
 	}
 	
-	const std::vector<Image> &getImages() const
+	const std::vector<Image *> &getImages() const
 	{
 		return images;
+	}
+	
+	void shuffle() {
+		for(int i = 0; i < int(images.size()); ++i) {
+			int j = rand() % (i + 1);
+			Image *tmp = images[i];
+			images[i] = images[j];
+			images[j] = tmp;
+		}
 	}
 };
